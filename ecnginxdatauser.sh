@@ -82,7 +82,7 @@ cat > docker-compose.yml <<'EOF'
 services:
 
   kafka:
-    image: bitnami/kafka:latest
+    image: bitnami/kafka:3.7.0
     container_name: kafka
     restart: unless-stopped
 
@@ -136,11 +136,16 @@ volumes:
 EOF
 
 # ==============================
+# Pull images (fail fast if broken)
+# ==============================
+echo "[INFO] Pulling images..."
+
+docker compose pull
+
+# ==============================
 # Start stack
 # ==============================
 echo "[INFO] Starting containers..."
-
-cd /opt/demo
 
 docker compose up -d
 
