@@ -103,7 +103,7 @@ services:
     mem_limit: 2g
 
   app:
-    image: ghcr.io/spring-projects/spring-petclinic:latest
+    image: springio/gs-spring-boot-docker
     container_name: app
     restart: unless-stopped
 
@@ -113,7 +113,7 @@ services:
     expose:
       - "8080"
 
-    mem_limit: 2g
+    mem_limit: 1g
 
   nginx:
     image: nginx:alpine
