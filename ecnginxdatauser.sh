@@ -3,17 +3,17 @@
 set -e
 
 echo "=============================="
-echo "  UBUNTU EC2 BOOTSTRAP START"
+echo "  ZERO-FAIL EC2 BOOTSTRAP"
 echo "=============================="
 
 # ==============================
-# Update system
+# UPDATE
 # ==============================
 apt update -y
 apt upgrade -y
 
 # ==============================
-# Install Docker if missing
+# INSTALL DOCKER (OFFICIAL)
 # ==============================
 if ! command -v docker >/dev/null 2>&1; then
     echo "[INFO] Installing Docker..."
@@ -36,8 +36,6 @@ if ! command -v docker >/dev/null 2>&1; then
     apt update -y
 
     apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-else
-    echo "[INFO] Docker already installed"
 fi
 
 systemctl enable docker
@@ -46,21 +44,19 @@ systemctl start docker
 usermod -aG docker ubuntu || true
 
 # ==============================
-# Verify Docker Compose
+# VERIFY
 # ==============================
-if ! docker compose version >/dev/null 2>&1; then
-    echo "[ERROR] Docker Compose not found!"
-    exit 1
-fi
+docker version
+docker compose version
 
 # ==============================
-# App directory
+# APP FOLDER
 # ==============================
 mkdir -p /opt/demo/nginx
 cd /opt/demo
 
 # ==============================
-# Nginx config
+# NGINX
 # ==============================
 cat > nginx/default.conf <<'EOF'
 server {
@@ -76,29 +72,34 @@ server {
 EOF
 
 # ==============================
-# docker-compose.yml
+# DOCKER COMPOSE (ZERO FAIL STACK)
 # ==============================
 cat > docker-compose.yml <<'EOF'
 services:
 
   kafka:
-    image: bitnami/kafka:3.7.0
+    image: confluentinc/cp-kafka:7.6.1
     container_name: kafka
     restart: unless-stopped
 
     environment:
-      - KAFKA_CFG_NODE_ID=1
-      - KAFKA_CFG_PROCESS_ROLES=broker,controller
-      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
-      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093
-      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
-      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
-      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1@kafka:9093
-      - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=true
-      - KAFKA_KRAFT_CLUSTER_ID=abcdefghijklmnopqrstuv
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
 
     volumes:
-      - kafka_data:/bitnami/kafka
+      - kafka_data:/var/lib/kafka/data
+
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
     mem_limit: 2g
 
@@ -108,7 +109,8 @@ services:
     restart: unless-stopped
 
     depends_on:
-      - kafka
+      kafka:
+        condition: service_started
 
     expose:
       - "8080"
@@ -136,24 +138,26 @@ volumes:
 EOF
 
 # ==============================
-# Pull images (fail fast if broken)
+# RETRY SAFE PULL (IMPORTANT)
 # ==============================
-echo "[INFO] Pulling images..."
+echo "[INFO] Pulling images with retry..."
 
-docker compose pull
+for i in 1 2 3; do
+    docker compose pull && break || sleep 5
+done
 
 # ==============================
-# Start stack
+# START STACK
 # ==============================
-echo "[INFO] Starting containers..."
+echo "[INFO] Starting stack..."
 
 docker compose up -d
 
 # ==============================
-# Done
+# DONE
 # ==============================
 echo "=============================="
-echo "  DEPLOY COMPLETE"
+echo "  DEPLOY SUCCESS (ZERO FAIL)"
 echo "=============================="
 
 docker ps
